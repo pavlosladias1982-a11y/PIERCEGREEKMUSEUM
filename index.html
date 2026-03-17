@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="el">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>VR 360 Museum – Ancient Greece</title>
+
+  <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.min.js"></script>
+
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+    .overlay {
+      position: fixed;
+      left: 12px;
+      right: 12px;
+      top: 12px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      z-index: 20;
+      pointer-events: none;
+    }
+    .chip {
+      pointer-events: auto;
+      color: white;
+      background: rgba(0,0,0,0.55);
+      border: 1px solid rgba(255,255,255,0.25);
+      border-radius: 14px;
+      padding: 10px 14px;
+      font-size: 14px;
+      line-height: 1.35;
+      backdrop-filter: blur(6px);
+    }
+    .enter-vr-box {
+      position: fixed;
+      left: 50%;
+      bottom: 18px;
+      transform: translateX(-50%);
+      z-index: 25;
+      pointer-events: none;
+    }
+    .enter-vr-box button {
+      pointer-events: auto;
+      border: 0;
+      border-radius: 999px;
+      padding: 14px 22px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      color: #111;
+      background: #f2f2f2;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+    }
+    .enter-vr-box button:hover { transform: translateY(-1px); }
+    #aframeEnterVRButton { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="overlay">
+    <div class="chip">Ancient Greece VR Museum<br>Κοίτα 2 δευτ. τα hotspots ή τα εκθέματα για μεταφορά.</div>
+    <div class="chip">Mobile + Cardboard ready<br>Πάτησε <strong>ENTER VR</strong> για split-screen όπου υποστηρίζεται.</div>
+  </div>
+
+  <div class="enter-vr-box">
+    <button id="enterVrBtn">ENTER VR</button>
+  </div>
+
+  <a-scene
+    id="scene"
+    renderer="colorManagement: true; physicallyCorrectLights: true; antialias: true"
+    background="color: #111"
+    vr-mode-ui="enabled: true"
+    loading-screen="enabled: true"
+    embedded="false"
+    device-orientation-permission-ui="enabled: true">
+
+    <a-assets id="assets">
+      <a-asset-item id="m1" src="assets/models/ΚΥΛΙΞ.glb"></a-asset-item>
+      <a-asset-item id="m2" src="assets/models/ΛΗΚΥΘΟΣ.glb"></a-asset-item>
+      <a-asset-item id="m3" src="assets/models/ΑΜΦΟΡΕΑΣ.glb"></a-asset-item>
+      <a-asset-item id="m4" src="assets/models/Ο ΔΙΣΚΟΒΟΛΟΣ ΤΟΥ ΜΥΡΩΝΑ.glb"></a-asset-item>
+      <a-asset-item id="m5" src="assets/models/Ο ΗΝΙΟΧΟΣ ΤΩΝ ΔΕΛΦΩΝ.glb"></a-asset-item>
+      <a-asset-item id="m6" src="assets/models/Ο ΔΟΡΥΦΟΡΟΣ.glb"></a-asset-item>
+      <a-asset-item id="m7" src="assets/models/Η ΑΦΡΟΔΙΤΗ ΤΗΣ ΜΗΛΟΥ.glb"></a-asset-item>
+
+      <img id="logo1" src="assets/images/logo1.png" alt="logo 1" />
+      <img id="logo2" src="assets/images/logo2.jpg" alt="logo 2" />
+      <img id="logo3" src="assets/images/logo3.jpg" alt="logo 3" />
+
+      <img id="poster1" src="assets/images/poster1.jpg" alt="poster 1" />
+      <img id="poster2" src="assets/images/poster2.jpg" alt="poster 2" />
+      <img id="poster3" src="assets/images/poster3.png" alt="poster 3" />
+    </a-assets>
+
+    <a-entity light="type: ambient; intensity: 1.1"></a-entity>
+    <a-entity light="type: directional; intensity: 0.9; castShadow: true" position="2 8 4"></a-entity>
+    <a-entity light="type: point; intensity: 0.5; distance: 35" position="0 6 0"></a-entity>
+
+    <a-entity id="rig" position="0 1.6 9">
+      <a-camera id="camera" wasd-controls-enabled="false" look-controls="magicWindowTrackingEnabled: true">
+        <a-cursor
+          id="gazeCursor"
+          fuse="true"
+          fuse-timeout="2000"
+          raycaster="objects: .clickable"
+          geometry="primitive: ring; radiusInner: 0.009; radiusOuter: 0.014"
+          material="color: white; shader: flat; opacity: 0.95"
+          position="0 0 -1"></a-cursor>
+      </a-camera>
+    </a-entity>
+
+    <a-sky color="#121212"></a-sky>
+    <a-entity id="roomRoot"></a-entity>
+    <a-entity id="museumRoot"></a-entity>
+  </a-scene>
+
+  <script>
+    const PEDESTAL_HEIGHT = 1.05;
+    const PEDESTAL_RADIUS = 0.62;
+    const MODEL_MAX_WIDTH = 1.05;
+    const MODEL_MAX_DEPTH = 1.05;
+    const MODEL_MAX_HEIGHT = 2.2;
+    const SLOW_ROTATION_DEG_PER_SEC = 6;
+
+    const exhibits = [
+      { id: 'm1', name: 'ΚΥΛΙΞ', pedestal: 1, pos: [-6, 0, -5] },
+      { id: 'm2', name: 'ΛΗΚΥΘΟΣ', pedestal: 2, pos: [0, 0, -5] },
+      { id: 'm3', name: 'ΑΜΦΟΡΕΑΣ', pedestal: 3, pos: [6, 0, -5] },
+      { id: 'm4', name: 'Ο ΔΙΣΚΟΒΟΛΟΣ ΤΟΥ ΜΥΡΩΝΑ', pedestal: 4, pos: [-6, 0, 3] },
+      { id: 'm5', name: 'Ο ΗΝΙΟΧΟΣ ΤΩΝ ΔΕΛΦΩΝ', pedestal: 5, pos: [0, 0, 3] },
+      { id: 'm6', name: 'Ο ΔΟΡΥΦΟΡΟΣ', pedestal: 6, pos: [6, 0, 3] },
+      { id: 'm7', name: 'Η ΑΦΡΟΔΙΤΗ ΤΗΣ ΜΗΛΟΥ', pedestal: 7, pos: [0, 0, 11] }
+    ];
+
+    const corridorHotspots = [
+      { pos: [0, 0.02, 9], target: [0, 1.6, 9], lookAt: [0, 1.6, 0] },
+      { pos: [0, 0.02, 0], target: [0, 1.6, 0], lookAt: [0, 1.6, 0] },
+      { pos: [-8.5, 0.02, -1], target: [-8.5, 1.6, -1], lookAt: [0, 1.6, 0] },
+      { pos: [8.5, 0.02, -1], target: [8.5, 1.6, -1], lookAt: [0, 1.6, 0] },
+      { pos: [0, 0.02, 14], target: [0, 1.6, 14], lookAt: [0, 1.6, 7] }
+    ];
+
+    function makeRoom() {
+      const room = document.getElementById('roomRoot');
+      const floor = document.createElement('a-plane');
+      floor.setAttribute('rotation', '-90 0 0');
+      floor.setAttribute('width', '26');
+      floor.setAttribute('height', '24');
+      floor.setAttribute('color', '#d9d3c7');
+      floor.setAttribute('material', 'roughness: 0.95; metalness: 0.05');
+      room.appendChild(floor);
+
+      const ceiling = document.createElement('a-plane');
+      ceiling.setAttribute('rotation', '90 0 0');
+      ceiling.setAttribute('position', '0 7 0');
+      ceiling.setAttribute('width', '26');
+      ceiling.setAttribute('height', '24');
+      ceiling.setAttribute('color', '#f2eee6');
+      room.appendChild(ceiling);
+
+      const walls = [
+        { pos: [0, 3.5, -12], rot: [0, 0, 0], w: 26, h: 7 },
+        { pos: [0, 3.5, 12], rot: [0, 180, 0], w: 26, h: 7 },
+        { pos: [-13, 3.5, 0], rot: [0, 90, 0], w: 24, h: 7 },
+        { pos: [13, 3.5, 0], rot: [0, -90, 0], w: 24, h: 7 }
+      ];
+
+      walls.forEach((w) => {
+        const wall = document.createElement('a-plane');
+        wall.setAttribute('position', w.pos.join(' '));
+        wall.setAttribute('rotation', w.rot.join(' '));
+        wall.setAttribute('width', String(w.w));
+        wall.setAttribute('height', String(w.h));
+        wall.setAttribute('color', '#efe9dd');
+        wall.setAttribute('material', 'roughness: 0.98; metalness: 0');
+        room.appendChild(wall);
+      });
+
+      const logoPanels = [
+        { src: '#logo1', pos: [-8.4, 4.2, -11.85], rot: [0, 0, 0] },
+        { src: '#logo2', pos: [0, 4.2, -11.85], rot: [0, 0, 0] },
+        { src: '#logo3', pos: [8.4, 4.2, -11.85], rot: [0, 0, 0] },
+        { src: '#logo1', pos: [-12.85, 4.2, 6], rot: [0, 90, 0] },
+        { src: '#logo2', pos: [12.85, 4.2, 6], rot: [0, -90, 0] }
+      ];
+
+      logoPanels.forEach((p) => {
+        const panel = document.createElement('a-plane');
+        panel.setAttribute('src', p.src);
+        panel.setAttribute('position', p.pos.join(' '));
+        panel.setAttribute('rotation', p.rot.join(' '));
+        panel.setAttribute('width', '3.2');
+        panel.setAttribute('height', '1.5');
+        panel.setAttribute('material', 'shader: flat; transparent: true');
+        room.appendChild(panel);
+      });
+
+      const posterSources = ['#poster1', '#poster2', '#poster3'];
+      const posterPanels = [
+        { pos: [-5.5, 2.8, -11.84], rot: [0, 0, 0] },
+        { pos: [5.5, 2.8, -11.84], rot: [0, 0, 0] },
+        { pos: [-12.84, 2.8, -5], rot: [0, 90, 0] },
+        { pos: [-12.84, 2.8, 5], rot: [0, 90, 0] },
+        { pos: [12.84, 2.8, -5], rot: [0, -90, 0] },
+        { pos: [12.84, 2.8, 5], rot: [0, -90, 0] },
+        { pos: [-6, 2.8, 11.84], rot: [0, 180, 0] },
+        { pos: [6, 2.8, 11.84], rot: [0, 180, 0] }
+      ];
+      posterPanels.forEach((p, i) => {
+        const poster = document.createElement('a-plane');
+        poster.setAttribute('src', posterSources[i % posterSources.length]);
+        poster.setAttribute('position', p.pos.join(' '));
+        poster.setAttribute('rotation', p.rot.join(' '));
+        poster.setAttribute('width', '2.25');
+        poster.setAttribute('height', '3.2');
+        poster.setAttribute('material', 'shader: flat');
+        room.appendChild(poster);
+      });
+    }
+
+    function createPedestal(exhibit) {
+      const root = document.getElementById('museumRoot');
+      const [x, y, z] = exhibit.pos;
+      const group = document.createElement('a-entity');
+      group.setAttribute('position', `${x} ${y} ${z}`);
+      group.setAttribute('id', `pedestal-${exhibit.pedestal}`);
+
+      const base = document.createElement('a-cylinder');
+      base.setAttribute('radius', String(PEDESTAL_RADIUS));
+      base.setAttribute('height', String(PEDESTAL_HEIGHT));
+      base.setAttribute('position', `0 ${PEDESTAL_HEIGHT / 2} 0`);
+      base.setAttribute('color', '#f4f0e8');
+      base.setAttribute('material', 'roughness: 0.7; metalness: 0.15');
+      group.appendChild(base);
+
+      const top = document.createElement('a-cylinder');
+      top.setAttribute('radius', String(PEDESTAL_RADIUS + 0.05));
+      top.setAttribute('height', '0.06');
+      top.setAttribute('position', `0 ${PEDESTAL_HEIGHT + 0.03} 0`);
+      top.setAttribute('color', '#ddd5c8');
+      group.appendChild(top);
+
+      const labelY = 0.52;
+      const labelDist = PEDESTAL_RADIUS + 0.02;
+      const labelScale = exhibit.name.length > 18 ? 0.55 : 0.72;
+      const labels = [
+        { pos: [0, labelY, labelDist], rot: [0, 0, 0] },
+        { pos: [0, labelY, -labelDist], rot: [0, 180, 0] },
+        { pos: [labelDist, labelY, 0], rot: [0, -90, 0] },
+        { pos: [-labelDist, labelY, 0], rot: [0, 90, 0] }
+      ];
+      labels.forEach((l) => {
+        const text = document.createElement('a-text');
+        text.setAttribute('value', exhibit.name);
+        text.setAttribute('position', l.pos.join(' '));
+        text.setAttribute('rotation', l.rot.join(' '));
+        text.setAttribute('align', 'center');
+        text.setAttribute('anchor', 'center');
+        text.setAttribute('color', '#2e2a24');
+        text.setAttribute('width', String(2.5 * labelScale));
+        group.appendChild(text);
+      });
+
+      const modelWrap = document.createElement('a-entity');
+      modelWrap.setAttribute('id', `wrap-${exhibit.pedestal}`);
+      modelWrap.setAttribute('position', `0 ${PEDESTAL_HEIGHT + 0.03} 0`);
+      modelWrap.setAttribute('slow-spin', '');
+      group.appendChild(modelWrap);
+
+      const model = document.createElement('a-entity');
+      model.setAttribute('id', `model-${exhibit.pedestal}`);
+      model.setAttribute('gltf-model', `#${exhibit.id}`);
+      model.setAttribute('auto-fit-model', '');
+      model.setAttribute('class', 'clickable exhibit-mesh');
+      model.setAttribute('shadow', 'cast: true; receive: false');
+      model.setAttribute('teleport-to', `target: ${x} 1.6 ${z + 2.35}; lookAt: ${x} 1.45 ${z}`);
+      modelWrap.appendChild(model);
+
+      const ring = 2.35;
+      const sidePoints = [
+        { pos: [0, 0.05, ring], target: [x, 1.6, z + ring], lookAt: [x, 1.45, z], rot: [0, 0, 0] },
+        { pos: [0, 0.05, -ring], target: [x, 1.6, z - ring], lookAt: [x, 1.45, z], rot: [0, 180, 0] },
+        { pos: [ring, 0.05, 0], target: [x + ring, 1.6, z], lookAt: [x, 1.45, z], rot: [0, -90, 0] },
+        { pos: [-ring, 0.05, 0], target: [x - ring, 1.6, z], lookAt: [x, 1.45, z], rot: [0, 90, 0] }
+      ];
+      sidePoints.forEach((s) => {
+        const arrow = document.createElement('a-entity');
+        arrow.setAttribute('position', s.pos.join(' '));
+        arrow.setAttribute('rotation', s.rot.join(' '));
+        arrow.setAttribute('class', 'clickable');
+        arrow.setAttribute('teleport-to', `target: ${s.target.join(' ')}; lookAt: ${s.lookAt.join(' ')}`);
+
+        const circle = document.createElement('a-circle');
+        circle.setAttribute('radius', '0.3');
+        circle.setAttribute('rotation', '-90 0 0');
+        circle.setAttribute('color', '#1d1d1d');
+        circle.setAttribute('material', 'opacity: 0.72');
+        arrow.appendChild(circle);
+
+        const triangle = document.createElement('a-triangle');
+        triangle.setAttribute('vertex-a', '0 0.17 0');
+        triangle.setAttribute('vertex-b', '-0.13 -0.12 0');
+        triangle.setAttribute('vertex-c', '0.13 -0.12 0');
+        triangle.setAttribute('rotation', '-90 0 0');
+        triangle.setAttribute('position', '0 0.01 0');
+        triangle.setAttribute('color', '#f3d28a');
+        arrow.appendChild(triangle);
+
+        group.appendChild(arrow);
+      });
+      root.appendChild(group);
+    }
+
+    function createCorridorHotspots() {
+      const root = document.getElementById('museumRoot');
+      corridorHotspots.forEach((c) => {
+        const hotspot = document.createElement('a-entity');
+        hotspot.setAttribute('position', c.pos.join(' '));
+        hotspot.setAttribute('class', 'clickable');
+        hotspot.setAttribute('teleport-to', `target: ${c.target.join(' ')}; lookAt: ${c.lookAt.join(' ')}`);
+
+        const circle = document.createElement('a-circle');
+        circle.setAttribute('radius', '0.34');
+        circle.setAttribute('rotation', '-90 0 0');
+        circle.setAttribute('color', '#27344b');
+        circle.setAttribute('material', 'opacity: 0.72');
+        hotspot.appendChild(circle);
+
+        const triangle = document.createElement('a-triangle');
+        triangle.setAttribute('vertex-a', '0 0.17 0');
+        triangle.setAttribute('vertex-b', '-0.13 -0.12 0');
+        triangle.setAttribute('vertex-c', '0.13 -0.12 0');
+        triangle.setAttribute('rotation', '-90 0 0');
+        triangle.setAttribute('position', '0 0.01 0');
+        triangle.setAttribute('color', '#9fd7ff');
+        hotspot.appendChild(triangle);
+
+        root.appendChild(hotspot);
+      });
+    }
+
+    AFRAME.registerComponent('slow-spin', {
+      tick: function (time, delta) {
+        const current = this.el.object3D.rotation.y;
+        this.el.object3D.rotation.y = current + THREE.MathUtils.degToRad((SLOW_ROTATION_DEG_PER_SEC * delta) / 1000);
+      }
+    });
+
+    AFRAME.registerComponent('teleport-to', {
+      schema: { target: { type: 'vec3' }, lookAt: { type: 'vec3' } },
+      init: function () {
+        this.el.addEventListener('click', () => {
+          const rig = document.getElementById('rig');
+          const cam = document.getElementById('camera');
+          const t = this.data.target;
+          const lookAt = this.data.lookAt;
+          rig.object3D.position.set(t.x, t.y, t.z);
+          const worldCamPos = new THREE.Vector3();
+          cam.object3D.getWorldPosition(worldCamPos);
+          const dx = lookAt.x - worldCamPos.x;
+          const dz = lookAt.z - worldCamPos.z;
+          rig.object3D.rotation.set(0, Math.atan2(dx, dz), 0);
+        });
+      }
+    });
+
+    AFRAME.registerComponent('auto-fit-model', {
+      init: function () {
+        this.el.addEventListener('model-loaded', () => {
+          const obj = this.el.getObject3D('mesh');
+          if (!obj) return;
+          const box = new THREE.Box3().setFromObject(obj);
+          const size = new THREE.Vector3();
+          const center = new THREE.Vector3();
+          box.getSize(size);
+          box.getCenter(center);
+
+          const scaleX = MODEL_MAX_WIDTH / Math.max(size.x, 0.001);
+          const scaleY = MODEL_MAX_HEIGHT / Math.max(size.y, 0.001);
+          const scaleZ = MODEL_MAX_DEPTH / Math.max(size.z, 0.001);
+          const uniform = Math.min(scaleX, scaleY, scaleZ);
+          this.el.object3D.scale.setScalar(uniform);
+
+          const resizedBox = new THREE.Box3().setFromObject(obj);
+          const resizedCenter = new THREE.Vector3();
+          resizedBox.getCenter(resizedCenter);
+          this.el.object3D.position.set(-resizedCenter.x, -resizedBox.min.y + 0.02, -resizedCenter.z);
+        });
+      }
+    });
+
+    function hookEnterVrButton() {
+      const btn = document.getElementById('enterVrBtn');
+      const scene = document.getElementById('scene');
+      btn.addEventListener('click', async () => {
+        try { await scene.enterVR(); }
+        catch (err) { console.warn('VR mode could not start on this browser/device.', err); }
+      });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      makeRoom();
+      exhibits.forEach(createPedestal);
+      createCorridorHotspots();
+      hookEnterVrButton();
+    });
+  </script>
+</body>
+</html>
